@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -10,6 +10,12 @@ from sklearn.impute import SimpleImputer
 import pickle
 import time
 import great_expectations as gx
+
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+
 
 class DataLoader:
     """データロードを行うクラス"""
@@ -180,7 +186,17 @@ class ModelTester:
         inference_time = time.time() - start_time
 
         accuracy = accuracy_score(y_test, y_pred)
-        return {"accuracy": accuracy, "inference_time": inference_time}
+        precision = precision_score(y_test, y_pred, zero_division=0)
+        recall = recall_score(y_test, y_pred, zero_division=0)
+        f1 = f1_score(y_test, y_pred, zero_division=0)
+
+        return {
+            "accuracy": accuracy,
+            "inference_time": inference_time,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+        }
 
     @staticmethod
     def save_model(model, path="models/titanic_model.pkl"):
@@ -199,9 +215,13 @@ class ModelTester:
         return model
 
     @staticmethod
-    def compare_with_baseline(current_metrics, baseline_threshold=0.75):
+    def compare_with_baseline_acc(current_metrics, baseline_threshold=0.75):
         """ベースラインと比較する"""
         return current_metrics["accuracy"] >= baseline_threshold
+
+    def compare_with_baseline_f1(current_metrics, baseline_threshold=0.75):
+        """ベースラインと比較する"""
+        return current_metrics["f1"] >= baseline_threshold
 
 
 # テスト関数（pytestで実行可能）
@@ -238,9 +258,13 @@ def test_model_performance():
     metrics = ModelTester.evaluate_model(model, X_test, y_test)
 
     # ベースラインとの比較
-    assert ModelTester.compare_with_baseline(
+    assert ModelTester.compare_with_baseline_acc(
         metrics, 0.75
     ), f"モデル性能がベースラインを下回っています: {metrics['accuracy']}"
+
+    assert ModelTester.compare_with_baseline_f1(
+        metrics, 0.75
+    ), f"モデル性能がベースラインを下回っています: {metrics['f1']}"
 
     # 推論時間の確認
     assert (
@@ -276,12 +300,18 @@ if __name__ == "__main__":
     model = ModelTester.train_model(X_train, y_train, model_params)
     metrics = ModelTester.evaluate_model(model, X_test, y_test)
 
-    print(f"精度: {metrics['accuracy']:.4f}")
+    print(f"accuracy: {metrics['accuracy']:.4f}")
+    print(f"precision: {metrics['precision']:.4f}")
+    print(f"recall: {metrics['recall']:.4f}")
+    print(f"f1: {metrics['f1']:.4f}")
     print(f"推論時間: {metrics['inference_time']:.4f}秒")
 
     # モデル保存
     model_path = ModelTester.save_model(model)
 
     # ベースラインとの比較
-    baseline_ok = ModelTester.compare_with_baseline(metrics)
-    print(f"ベースライン比較: {'合格' if baseline_ok else '不合格'}")
+    baseline_ok = ModelTester.compare_with_baseline_acc(metrics)
+    print(f"ベースライン比較(accuracy): {'合格' if baseline_ok else '不合格'}")
+
+    baseline_ok = ModelTester.compare_with_baseline_f1(metrics)
+    print(f"ベースライン比較(f1): {'合格' if baseline_ok else '不合格'}")
